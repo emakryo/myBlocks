@@ -1,7 +1,5 @@
 class Block{
   int posX, posY;
-  int posP, posQ;
-  int initX, initY;
   color fill_color, str_color;
   int sizeP, sizeQ;
   int id;
@@ -9,10 +7,6 @@ class Block{
   Block(int x, int y, int w, int h, color f, color s, int i){
     posX = x;
     posY = y;
-    posP = -1;
-    posQ = -1;
-    initX = x;
-    initY = y;
     sizeP = w;
     sizeQ = h;
     fill_color = f;
@@ -20,21 +14,42 @@ class Block{
     id = i;
   }
 
-  Block(int x, int y, int w, int h, int i){
-    this(x,y,w,h,#ffffff,#7f7f7f,i);
-  }
-
-  void draw(){
+  void draw(boolean[] stubs){
     fill(fill_color);
     stroke(str_color);
     rect(posX, posY, sizeP*scaleX, sizeQ*scaleY);
 
     for(int s=0; s<sizeP;s++){
-      if(!this.onField() || (posQ > 0 && field[posP+s][posQ-1] < 0)){
+      if(stubs[s]){
         rect(posX+(s+0.3)*scaleX, posY-0.25*scaleY,
              0.4*scaleX, 0.25*scaleY);
       }
     }
+  }
+
+}
+
+class NormalBlock extends Block{
+  int posP = -1, posQ = -1;
+  int initX, initY;
+
+  NormalBlock(int x, int y, int w, int h, int i){
+    super(x,y,w,h,#ffffff, #7f7f7f,i);
+    initX = x;
+    initY = y;
+  }
+
+  void draw(){
+    boolean[] stubs = new boolean[sizeP];
+    for(int s=0; s<sizeP; s++){
+      if(posQ > 0 && field[posP+s][posQ-1] >= 0){
+        stubs[s] = false;
+      }
+      else{
+        stubs[s] = true;
+      }
+    }
+    super.draw(stubs);
   }
 
   boolean onField(){
@@ -118,32 +133,6 @@ class Block{
     return posY+(sizeQ*scaleY)/2;
   }
 
-  Block guide(){
-    Block b = new Block(posX,posY,sizeP,sizeQ,color(255,127),str_color,id*100);
-    return b;
-  }
-
-  void moveMouse(int id){
-    int p,q;
-    posX = mouseX - (sizeP*scaleX)/2;
-    posY = mouseY - (sizeQ*scaleY)/2;
-    p = round(float(posX)/scaleX);
-    q = round(float(posY)/scaleY);
-
-    for(int i=0; i<sizeP; i++){
-      for(int j=0; j<sizeQ; j++){
-        if(mouseX > fieldWidth){
-          fill_color = #483d8b;
-        }else if((0 <= p+i && p+i < rangeP &&
-                  0 <= q+j && q+j < rangeQ &&
-                  field[p+i][q+j] != id && field[p+i][q+j] >= 0) ||
-                 p+i < 0 || rangeP <= p+i || q+j < 0 || rangeQ <= q+j){
-          str_color = #ff0000;
-        }
-      }
-    }
-  }
-
   void drop(){
 
     if(!this.onField()){
@@ -182,6 +171,64 @@ class Block{
       }
     }
     return false;
+  }
+
+}
+
+class MovingBlock extends Block{
+
+  MovingBlock(){
+    super(0,0,0,0,0,0,0);
+  }
+
+  void draw(NormalBlock b){
+    int p,q;
+    boolean[] stubs = new boolean[b.sizeP];
+
+    posX = mouseX - (sizeP*scaleX)/2;
+    posY = mouseY - (sizeQ*scaleY)/2;
+    p = round(float(posX)/scaleX);
+    q = round(float(posY)/scaleY);
+    sizeP = b.sizeP;
+    sizeQ = b.sizeQ;
+    id = b.id;
+
+    if(mouseX > fieldWidth){
+      fill_color = color(#483d8b,127);
+    }
+    else{
+      fill_color = color(#ffffff,127);
+    }
+
+    str_color = #7f7f7f;
+
+    for(int i=0; i<sizeP; i++){
+      stubs[i] = true;
+      for(int j=0; j<sizeQ; j++){
+        if((0 <= p+i && p+i < rangeP &&
+            0 <= q+j && q+j < rangeQ &&
+            field[p+i][q+j] != id && field[p+i][q+j] >= 0) ||
+           p+i < 0 || rangeP <= p+i || q+j < 0 || rangeQ <= q+j){
+          str_color = #ff0000;
+        }
+      }
+    }
+    super.draw(stubs);
+  }
+}
+
+class FloorBlock extends Block{
+
+  FloorBlock(){
+    super(0, (rangeQ-baseQ)*scaleX, rangeP, baseQ, #228b22, color(127),100);
+  }
+
+  void draw(){
+    boolean[] stubs = new boolean[sizeP];
+    for(int s=0; s<sizeP; s++){
+      stubs[s] = true;
+    }
+    super.draw(stubs);
   }
 
 }
@@ -230,8 +277,9 @@ int rangeP;
 int rangeQ;
 
 int nBlock;
-Block[] blocks;
-Block floorBlock;
+NormalBlock[] blocks;
+FloorBlock floorBlock;
+MovingBlock movingBlock;
 int[][] field;
 
 int baseQ;
@@ -259,9 +307,10 @@ void setup(){
   size(fieldWidth+menuWidth,fieldHeight);
   baseQ = 3;
   nBlock = 20;
-  blocks= new Block[nBlock];
-  floorBlock = new Block(0, (rangeQ-baseQ)*scaleX, rangeP, baseQ,
-                         #228b22, color(127),100);
+  blocks= new NormalBlock[nBlock];
+  floorBlock = new FloorBlock();
+
+  movingBlock = new MovingBlock();
   selecting = -1;
 
   initBlockOffsetX = 20;
@@ -271,23 +320,23 @@ void setup(){
 
   // 2 x 1
   for(int i=0; i<6; i++){
-    blocks[i] = new Block(fieldWidth+initBlockOffsetX,
-                          initBlockOffsetY, 2, 1, i);
+    blocks[i] = new NormalBlock(fieldWidth+initBlockOffsetX,
+                                initBlockOffsetY, 2, 1, i);
   }
   // 3 x 1
   for(int i=6; i<12; i++){
-    blocks[i] = new Block(fieldWidth+initBlockOffsetX,
-                          initBlockOffsetY+initBlockScaleY, 3,1, i);
+    blocks[i] = new NormalBlock(fieldWidth+initBlockOffsetX,
+                                initBlockOffsetY+initBlockScaleY, 3,1, i);
   }
   // 4 x 1
   for(int i=12; i<16; i++){
-    blocks[i] = new Block(fieldWidth+initBlockOffsetX,
-                          initBlockOffsetY+2*initBlockScaleY, 4,1,i);
+    blocks[i] = new NormalBlock(fieldWidth+initBlockOffsetX,
+                                initBlockOffsetY+2*initBlockScaleY, 4,1,i);
   }
   // 6 x 1
   for(int i=16; i<20; i++){
-    blocks[i] = new Block(fieldWidth+initBlockOffsetX,
-                          initBlockOffsetY+3*initBlockScaleY,6,1,i);
+    blocks[i] = new NormalBlock(fieldWidth+initBlockOffsetX,
+                                initBlockOffsetY+3*initBlockScaleY,6,1,i);
   }
 
   field = new int[rangeP][rangeQ];
@@ -337,15 +386,12 @@ void draw(){
   text("x "+ countUnusedBlocksSizeOf(6,1),
        fieldWidth + blockCounterOffsetX, initBlockOffsetY+3*initBlockScaleY);
 
-
-  for(Block b : blocks){
+  for(NormalBlock b : blocks){
     b.draw();
   }
 
   if(selecting >= 0){
-    Block b = blocks[selecting].guide();
-    b.moveMouse(selecting);
-    b.draw();
+    movingBlock.draw(blocks[selecting]);
   }
 
 }
@@ -361,18 +407,21 @@ void grid(){
 }
 
 void mousePressed(){
-  int nearest = nearestBlockIndex();
   if(selecting < 0){
+
     if(reset.clicked()){
-      for(Block b : blocks){
+      for(NormalBlock b : blocks){
         b.init();
       }
       return;
     }
+
     if(drop.clicked()){
       dropBlocks();
       return;
     }
+
+    int nearest = nearestBlockIndex();
     if(nearest < 0) return;
     selecting = nearest;
     blocks[nearest].select();
@@ -413,7 +462,7 @@ int nearestBlockIndex(){
 
 int countUnusedBlocksSizeOf(int p, int q){
   int c=0;
-  for(Block b: blocks){
+  for(NormalBlock b: blocks){
     if(b.sizeP == p && b.sizeQ == q &&
        b.posP < 0 && b.posQ < 0){
       c++;
@@ -441,7 +490,7 @@ void dropBlocks(){
     */
 
     // find dropable blocks
-    for(Block b: blocks){
+    for(NormalBlock b: blocks){
       if(b.onField() && mergeMap[b.id] < floorBlock.id){
         droppingId = mergeMap[b.id];
         break;
@@ -468,17 +517,17 @@ void dropBlocks(){
 void mergeBlocks(){
   boolean changed = true;
 
-  for(Block b1: blocks){
-    if(b1.onField() && b1.connected(floorBlock)){
-      mergeMap[b1.id] = floorBlock.id;
+  for(NormalBlock b: blocks){
+    if(b.onField() && b.connected(floorBlock)){
+      mergeMap[b.id] = floorBlock.id;
     }
   }
 
   while(changed){
     changed = false;
 
-    for(Block b1: blocks){
-      for(Block b2: blocks){
+    for(NormalBlock b1: blocks){
+      for(NormalBlock b2: blocks){
         if(b1.onField() && b2.onField() &&
            b1.id != b2.id && b1.connected(b2)){
           if(mergeMap[b1.id] > mergeMap[b2.id]){
