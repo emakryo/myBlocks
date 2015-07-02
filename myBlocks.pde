@@ -21,7 +21,7 @@ class Block{
   }
 
   Block(int x, int y, int w, int h, int i){
-    this(x,y,w,h,#ffffff,color(127),i);
+    this(x,y,w,h,#ffffff,#7f7f7f,i);
   }
 
   void draw(){
@@ -30,11 +30,15 @@ class Block{
     rect(posX, posY, sizeP*scaleX, sizeQ*scaleY);
 
     for(int s=0; s<sizeP;s++){
-      if((posP < 0 && posQ < 0) || (posQ > 0 && field[posP+s][posQ-1] < 0)){
+      if(!this.onField() || (posQ > 0 && field[posP+s][posQ-1] < 0)){
         rect(posX+(s+0.3)*scaleX, posY-0.25*scaleY,
              0.4*scaleX, 0.25*scaleY);
       }
     }
+  }
+
+  boolean onField(){
+    return posP >= 0;
   }
 
   void select(){
@@ -46,7 +50,9 @@ class Block{
   }
 
   void init(){
-    if(posP < 0 || posQ < 0){
+    // set initial position
+
+    if(!this.onField()){
       return;
     }
     for(int i=0; i<sizeP; i++){
@@ -59,12 +65,18 @@ class Block{
     posP = -1;
     posQ = -1;
 
-    fill_color = #ffffff;
   }
 
   int put(){
+    // return value
+    // 0 : success
+    // -1 : failure
+
+    // calculate nearest index
     int p = round(float(mouseX-sizeP*scaleX/2) / float(scaleX));
     int q = round(float(mouseY-sizeQ*scaleY/2) / float(scaleY));
+
+    // whether it can put
     for(int i=0; i<sizeP; i++){
       for(int j=0; j<sizeQ; j++){
         if(p+i < 0 || rangeP <= p+i ||
@@ -74,13 +86,17 @@ class Block{
         }
       }
     }
-    for(int i=0; i<rangeP; i++){
-      for(int j=0; j<rangeQ; j++){
-        if(field[i][j] == id){
-          field[i][j] = -1;
+
+    if(this.onField()){
+      // remove previous position
+      for(int i=0; i<sizeP; i++){
+        for(int j=0; j<sizeQ; j++){
+          field[posP+i][posQ+j] = -1;
         }
       }
     }
+
+    // change position
     posX = p * scaleX;
     posY = q * scaleY;
     posP = p;
@@ -116,9 +132,12 @@ class Block{
 
     for(int i=0; i<sizeP; i++){
       for(int j=0; j<sizeQ; j++){
-        if(0 <= p+i && p+i < rangeP &&
-           0 <= q+j && q+j < rangeQ &&
-           field[p+i][q+j] != id && field[p+i][q+j] >= 0){
+        if(mouseX > fieldWidth){
+          fill_color = #483d8b;
+        }else if((0 <= p+i && p+i < rangeP &&
+                  0 <= q+j && q+j < rangeQ &&
+                  field[p+i][q+j] != id && field[p+i][q+j] >= 0) ||
+                 p+i < 0 || rangeP <= p+i || q+j < 0 || rangeQ <= q+j){
           str_color = #ff0000;
         }
       }
@@ -126,15 +145,19 @@ class Block{
   }
 
   void drop(){
-    posQ += 1;
-    posY += scaleY;
-    for(int i=0; i<rangeP; i++){
-      for(int j=0; j<rangeQ; j++){
-        if(field[i][j] == id){
-          field[i][j] = -1;
-        }
+
+    if(!this.onField()){
+      return;
+    }
+
+    for(int s=0; s<sizeP; s++){
+      for(int t=0; t<sizeQ; t++){
+        field[posP+s][posQ+t] = -1;
       }
     }
+
+    posQ += 1;
+    posY += scaleY;
 
     for(int s=0; s<sizeP; s++){
       for(int t=0; t<sizeQ; t++){
@@ -144,16 +167,17 @@ class Block{
   }
 
   boolean connected(Block b){
+    if(!this.onField() || !this.onField()){
+      return false;
+    }
 
-    for(int i=0; i<rangeP; i++){
-      for(int j=0; j<rangeQ; j++){
-        if(field[i][j] == id){
-          if(j>0 && field[i][j-1] == b.id){
-            return true;
-          }
-          if(j<rangeQ-1 && field[i][j+1] == b.id){
-            return true;
-          }
+    for(int s=0; s<sizeP; s++){
+      for(int t=0; t<sizeQ; t++){
+        if(posQ+t>0 && field[posP+s][posQ+t-1] == b.id){
+          return true;
+        }
+        if(posQ+t<rangeQ-1 && field[posP+s][posQ+t+1] == b.id){
+          return true;
         }
       }
     }
@@ -285,6 +309,8 @@ void setup(){
   drop = new Button(fieldWidth + (menuWidth-buttonWidth)/2, 550,
                     buttonWidth, buttonHeight, "Drop");
 
+  mergeMap = new int[nBlock];
+
 }
 
 void draw(){
@@ -296,6 +322,9 @@ void draw(){
   fill(64);
   noStroke();
   rect(fieldWidth, 0, menuWidth, menuHeight);
+
+  reset.draw();
+  drop.draw();
 
   textSize(18);
   fill(255);
@@ -319,8 +348,6 @@ void draw(){
     b.draw();
   }
 
-  reset.draw();
-  drop.draw();
 }
 
 void grid(){
@@ -368,6 +395,7 @@ void mousePressed(){
 int nearestBlockIndex(){
   float minDist = dist(blocks[0].xCenter(), blocks[0].yCenter(), mouseX, mouseY);
   int minInd = 0;
+  int threshold = scaleY * 3;
   for(int i=1; i<nBlock; i++){
     float d = dist(blocks[i].xCenter(), blocks[i].yCenter(),mouseX, mouseY);
     if(d <= minDist){
@@ -375,7 +403,7 @@ int nearestBlockIndex(){
       minInd = i;
     }
   }
-  if(minDist < 100){
+  if(minDist < threshold){
     return minInd;
   }
   else{
@@ -395,21 +423,26 @@ int countUnusedBlocksSizeOf(int p, int q){
 }
 
 void dropBlocks(){
-  mergeMap = new int[nBlock];
+
+  int droppingId;
 
   for(int i=0; i<nBlock; i++){
     mergeMap[i] = i;
   }
 
-  mergeBlocks();
-
-  int droppingId = -1;
-
   while(true){
+    droppingId = -1;
+    mergeBlocks();
 
+    /*
+    for(int i=0; i<nBlock; i++){
+      println(i + " " + mergeMap[i]);
+    }
+    */
+
+    // find dropable blocks
     for(Block b: blocks){
-      // find dropable blocks
-      if(b.posP >= 0 && mergeMap[b.id] < floorBlock.id){
+      if(b.onField() && mergeMap[b.id] < floorBlock.id){
         droppingId = mergeMap[b.id];
         break;
       }
@@ -420,15 +453,14 @@ void dropBlocks(){
     }
 
     // drop
-    if(droppingId >= 0){
-      for(Block b:blocks){
-        if(mergeMap[b.id] == droppingId){
-          b.drop();
+    for(int j=rangeQ-baseQ-1; j>=0; j--){
+      for(int i=0; i<rangeP; i++){
+        if(field[i][j] >= 0 && mergeMap[field[i][j]] == droppingId){
+          blocks[field[i][j]].drop();
         }
       }
     }
-    droppingId = -1;
-    mergeBlocks();
+
   }
 
 }
@@ -437,7 +469,7 @@ void mergeBlocks(){
   boolean changed = true;
 
   for(Block b1: blocks){
-    if(b1.connected(floorBlock)){
+    if(b1.onField() && b1.connected(floorBlock)){
       mergeMap[b1.id] = floorBlock.id;
     }
   }
@@ -447,7 +479,8 @@ void mergeBlocks(){
 
     for(Block b1: blocks){
       for(Block b2: blocks){
-        if(b1.id != b2.id && b1.connected(b2)){
+        if(b1.onField() && b2.onField() &&
+           b1.id != b2.id && b1.connected(b2)){
           if(mergeMap[b1.id] > mergeMap[b2.id]){
             mergeMap[b2.id] = mergeMap[b1.id];
             changed = true;
@@ -459,7 +492,6 @@ void mergeBlocks(){
         }
       }
     }
-
   }
 
 }
