@@ -27,6 +27,19 @@ class Block{
     }
   }
 
+  void draw(boolean[] stubs, int offsetX, int offsetY, color s, color f){
+    Block b = new Block(posX+offsetX, posY+offsetY, sizeP, sizeQ, s, f, id);
+    b.draw(stubs);
+  }
+
+  int centerX(){
+    return posX+(sizeP*scaleX)/2;
+  }
+
+  int centerY(){
+    return posY+(sizeQ*scaleY)/2;
+  }
+
 }
 
 class NormalBlock extends Block{
@@ -37,19 +50,6 @@ class NormalBlock extends Block{
     super(x,y,w,h,#ffffff, #7f7f7f,i);
     initX = x;
     initY = y;
-  }
-
-  void draw(){
-    boolean[] stubs = new boolean[sizeP];
-    for(int s=0; s<sizeP; s++){
-      if(posQ > 0 && field[posP+s][posQ-1] >= 0){
-        stubs[s] = false;
-      }
-      else{
-        stubs[s] = true;
-      }
-    }
-    super.draw(stubs);
   }
 
   boolean onField(){
@@ -70,11 +70,6 @@ class NormalBlock extends Block{
     if(!this.onField()){
       return;
     }
-    for(int i=0; i<sizeP; i++){
-      for(int j=0; j<sizeQ;j++){
-        field[posP+i][posQ+j] = -1;
-      }
-    }
     posX = initX;
     posY = initY;
     posP = -1;
@@ -82,139 +77,13 @@ class NormalBlock extends Block{
 
   }
 
-  int put(){
-    // return value
-    // 0 : success
-    // -1 : failure
-
-    // calculate nearest index
-    int p = round(float(mouseX-sizeP*scaleX/2) / float(scaleX));
-    int q = round(float(mouseY-sizeQ*scaleY/2) / float(scaleY));
-
-    // whether it can put
-    for(int i=0; i<sizeP; i++){
-      for(int j=0; j<sizeQ; j++){
-        if(p+i < 0 || rangeP <= p+i ||
-           q+j < 0 || rangeQ <= q+j ||
-           (field[p+i][q+j] != id && field[p+i][q+j] >= 0)){
-          return -1;
-        }
-      }
-    }
-
-    if(this.onField()){
-      // remove previous position
-      for(int i=0; i<sizeP; i++){
-        for(int j=0; j<sizeQ; j++){
-          field[posP+i][posQ+j] = -1;
-        }
-      }
-    }
-
-    // change position
+  void move(int p, int q){
     posX = p * scaleX;
     posY = q * scaleY;
     posP = p;
     posQ = q;
-    for(int i=0; i<sizeP; i++){
-      for(int j=0; j<sizeQ; j++){
-        field[posP+i][posQ+j] = id;
-      }
-    }
-
-    return 0;
   }
 
-  int xCenter(){
-    return posX+(sizeP*scaleX)/2;
-  }
-
-  int yCenter(){
-    return posY+(sizeQ*scaleY)/2;
-  }
-
-  void drop(){
-
-    if(!this.onField()){
-      return;
-    }
-
-    for(int s=0; s<sizeP; s++){
-      for(int t=0; t<sizeQ; t++){
-        field[posP+s][posQ+t] = -1;
-      }
-    }
-
-    posQ += 1;
-    posY += scaleY;
-
-    for(int s=0; s<sizeP; s++){
-      for(int t=0; t<sizeQ; t++){
-        field[posP+s][posQ+t] = id;
-      }
-    }
-  }
-
-  boolean connected(Block b){
-    if(!this.onField() || !this.onField()){
-      return false;
-    }
-
-    for(int s=0; s<sizeP; s++){
-      for(int t=0; t<sizeQ; t++){
-        if(posQ+t>0 && field[posP+s][posQ+t-1] == b.id){
-          return true;
-        }
-        if(posQ+t<rangeQ-1 && field[posP+s][posQ+t+1] == b.id){
-          return true;
-        }
-      }
-    }
-    return false;
-  }
-
-}
-
-class MovingBlock extends Block{
-
-  MovingBlock(){
-    super(0,0,0,0,0,0,0);
-  }
-
-  void draw(NormalBlock b){
-    int p,q;
-    boolean[] stubs = new boolean[b.sizeP];
-
-    posX = mouseX - (sizeP*scaleX)/2;
-    posY = mouseY - (sizeQ*scaleY)/2;
-    p = round(float(posX)/scaleX);
-    q = round(float(posY)/scaleY);
-    sizeP = b.sizeP;
-    sizeQ = b.sizeQ;
-    id = b.id;
-
-    if(mouseX > fieldWidth){
-      fill_color = color(#483d8b,127);
-    }
-    else{
-      fill_color = color(#ffffff,127);
-    }
-
-    str_color = #7f7f7f;
-
-    for(int i=0; i<sizeP; i++){
-      stubs[i] = true;
-      for(int j=0; j<sizeQ; j++){
-        if((0 <= p+i && p+i < rangeP &&
-            0 <= q+j && q+j < rangeQ &&
-            field[p+i][q+j] != id && field[p+i][q+j] >= 0) ||
-           p+i < 0 || rangeP <= p+i || q+j < 0 || rangeQ <= q+j){
-          str_color = #ff0000;
-        }
-      }
-    }
-    super.draw(stubs);
-  }
 }
 
 class FloorBlock extends Block{
@@ -229,6 +98,436 @@ class FloorBlock extends Block{
       stubs[s] = true;
     }
     super.draw(stubs);
+  }
+
+}
+
+class NormalBlocks{
+  NormalBlock[] blocks;
+  IntDict sizeIndeces;
+  boolean[] selecting;
+
+  int initBlockOffsetX = 20;
+  int initBlockOffsetY = 30;
+  int initBlockScaleY = 50;
+  int blockCounterOffsetX = 170;
+
+  NormalBlocks(int[] ws, int[] hs){
+    int len = ws.length;
+    int sizeIndex = 0;
+    blocks = new NormalBlock[len];
+    sizeIndeces = new IntDict();
+    selecting = new boolean[len];
+
+    for(int i=0; i<len; i++){
+      String sizeStr = ws[i]+" "+hs[i];
+      if(! sizeIndeces.hasKey(sizeStr)){
+        sizeIndeces.set(sizeStr, sizeIndex++);
+      }
+      blocks[i] = new NormalBlock(fieldWidth + initBlockOffsetX,
+                                  initBlockOffsetY +
+                                  sizeIndeces.get(sizeStr)*initBlockScaleY,
+                                  ws[i], hs[i], i);
+      selecting[i] = false;
+    }
+  }
+
+  void draw(){
+    for(NormalBlock b: blocks){
+      b.draw(stubs(b.id));
+    }
+  }
+
+  void drawCount(){
+    int[] count = new int[sizeIndeces.size()];
+    for(NormalBlock b: blocks){
+      if(! b.onField()){
+        count[sizeIndeces.get(b.sizeP+" "+b.sizeQ)] += 1;
+      }
+    }
+
+    textSize(18);
+    fill(255);
+    for(int s=0; s < count.length; s++){
+      text("x "+ count[s],
+           fieldWidth + blockCounterOffsetX,
+           initBlockOffsetY + s*initBlockScaleY);
+    }
+  }
+
+  void drawSelecting(){
+    int centerX = centerX();
+    int centerY = centerY();
+    color strColor = #7f7f7f;
+
+    if(centerX < 0 || centerY < 0) return;
+
+    if(!isPuttable()){
+      strColor = #ff0000;
+    }
+
+    for(NormalBlock b: blocks){
+      if(selecting[b.id]){
+        b.draw(stubsSelecting(b.id),
+               mouseX-centerX,mouseY-centerY,
+               color(#ffffff,127),strColor);
+      }
+    }
+  }
+
+  boolean[] stubs(int id){
+    NormalBlock b = blocks[id];
+    boolean[] st = new boolean[b.sizeP];
+    for(int s = 0; s < b.sizeP; s++){
+      if(! b.onField()) st[s] = true;
+      else if(b.posQ == 0) st[s] = true;
+      else if(field[b.posP+s][b.posQ-1] < 0) st[s] = true;
+      else st[s] = false;
+    }
+    return st;
+  }
+
+  boolean[] stubsSelecting(int id){
+    NormalBlock b = blocks[id];
+    boolean[] st = new boolean[b.sizeP];
+    for(int s = 0; s < b.sizeP; s++){
+      if(! b.onField()) st[s] = true;
+      else if(b.posQ == 0) st[s] = true;
+      else if(field[b.posP+s][b.posQ-1] < 0) st[s] = true;
+      else if(!selecting[field[b.posP+s][b.posQ-1]]) st[s] = true;
+      else st[s] = false;
+    }
+    return st;
+  }
+
+  void init(){
+    for(int i=0; i<rangeP; i++){
+      for(int j=0; j<rangeQ; j++){
+        if(0 <= field[i][j] && field[i][j] < blocks.length &&
+           selecting[field[i][j]]){
+          field[i][j] = -1;
+        }
+      }
+    }
+    for(NormalBlock b: blocks){
+      if(selecting[b.id]){
+        b.init();
+        selecting[b.id] = false;
+      }
+    }
+  }
+
+  void init(int id){
+    blocks[id].init();
+    for(int i=0; i<rangeP; i++){
+      for(int j=0; j<rangeQ; j++){
+        if(field[i][j] == id){
+          field[i][j] = -1;
+        }
+      }
+    }
+  }
+
+  void reset(){
+    for(int i=0; i<rangeP; i++){
+      for(int j=0; j<rangeQ-baseQ; j++){
+        field[i][j] = -1;
+      }
+    }
+
+    for(NormalBlock b: blocks){
+      b.cancel();
+      b.init();
+    }
+  }
+
+  NormalBlock at(int id){
+    return blocks[id];
+  }
+
+  int count(){
+    return blocks.length;
+  }
+
+  int nearestIndex(int x, int y){
+
+    float minDist = dist(blocks[0].centerX(), blocks[0].centerY(), x, y);
+    int minInd = 0;
+    int threshold = scaleY * 3;
+    for(int i=1; i<blocks.length; i++){
+      float d = dist(blocks[i].centerX(), blocks[i].centerY(),x,y);
+      if(d <= minDist){
+        minDist = d;
+        minInd = i;
+      }
+    }
+    if(minDist < threshold){
+      return minInd;
+    }
+    else{
+      return -1;
+    }
+  }
+
+  void select(boolean[] mask){
+    for(int i=0; i<blocks.length; i++){
+      if(mask[i]){
+        blocks[i].select();
+        selecting[i] = true;
+      }
+    }
+  }
+
+  void select(int id){
+    blocks[id].select();
+    selecting[id] = true;
+  }
+
+  void selectNearest(){
+    int i = nearestIndex(mouseX, mouseY);
+
+    if(i < 0) return;
+
+    select(i);
+  }
+
+  boolean[] adjust(int id){
+    NormalBlock b = blocks[id];
+    boolean[] ad = new boolean[blocks.length];
+    for(int i=0; i<blocks.length; i++){
+      ad[i] = false;
+    }
+
+    for(int s=0; s<b.sizeP; s++){
+      int n = field[b.posP+s][b.posQ-1];
+      if(0 <= n && n < blocks.length){
+        ad[n] = true;
+      }
+      n = field[b.posP+s][b.posQ+b.sizeQ];
+      if(0 <= n && n < blocks.length){
+        ad[n] = true;
+      }
+
+    }
+    return ad;
+  }
+
+  void expand(){
+    boolean changed = true;
+
+    while(changed){
+      changed = false;
+
+      for(NormalBlock b: blocks){
+        if(selecting[b.id]){
+          boolean[] ad = adjust(b.id);
+
+          for(int i=0; i<blocks.length;i++){
+            if(!selecting[i] && ad[i]){
+              selecting[i] = true;
+              changed = true;
+            }
+          }
+        }
+      }
+    }
+
+    for(NormalBlock b: blocks){
+      if(selecting[b.id]){
+        b.select();
+      }
+    }
+
+  }
+
+  void cancel(){
+    for(int i=0; i<blocks.length; i++){
+      blocks[i].cancel();
+      selecting[i] = false;
+    }
+  }
+
+  int centerX(){
+    int x=0,n=0;
+    for(NormalBlock b:blocks){
+      if(selecting[b.id]){
+        x += b.centerX();
+        n ++;
+      }
+    }
+    return n != 0 ? x/n : -1;
+  }
+
+  int centerY(){
+    int y=0,n=0;
+    for(NormalBlock b:blocks){
+      if(selecting[b.id]){
+        y += b.centerY();
+        n ++;
+      }
+    }
+    return n != 0 ? y/n : -1;
+  }
+
+  boolean isPuttable(){
+    int cx = centerX();
+    int cy = centerY();
+
+    for(NormalBlock b: blocks){
+      if(! selecting[b.id]) continue;
+
+      int p = round(float(mouseX-cx+b.centerX()-b.sizeP*scaleX/2) / float(scaleX));
+      int q = round(float(mouseY-cy+b.centerY()-b.sizeQ*scaleY/2) / float(scaleY));
+
+      for(int s=0; s<b.sizeP; s++){
+        for(int t=0; t<b.sizeQ; t++){
+          if(p+s < 0 || rangeP <= p+s ||
+             q+t < 0 || rangeQ <= q+t ||
+             field[p+s][q+t] == floorBlock.id ||
+             (field[p+s][q+t] >= 0 && !selecting[field[p+s][q+t]])){
+            return false;
+          }
+        }
+      }
+    }
+    return true;
+  }
+
+  boolean isSelecting(){
+    boolean s = false;
+    for(int i=0; i<blocks.length; i++){
+      s = s || selecting[i];
+    }
+    return s;
+  }
+
+  int put(){
+    int cx,cy;
+    if(! isPuttable()) return -1;
+    cx = centerX();
+    cy = centerY();
+
+    // clear field
+    for(int i=0; i<rangeP; i++){
+      for(int j=0; j<rangeQ; j++){
+        if(0 <= field[i][j] && field[i][j] < blocks.length &&
+           selecting[field[i][j]])
+          field[i][j] = -1;
+      }
+    }
+
+    for(NormalBlock b: blocks){
+      if(! selecting[b.id]) continue;
+
+      int p = round(float(mouseX-cx+b.centerX()-b.sizeP*scaleX/2) / float(scaleX));
+      int q = round(float(mouseY-cy+b.centerY()-b.sizeQ*scaleY/2) / float(scaleY));
+
+      b.move(p,q);
+
+      for(int s=0; s<b.sizeP; s++){
+        for(int t=0; t<b.sizeQ; t++){
+          field[b.posP+s][b.posQ+t] = b.id;
+        }
+      }
+
+      b.cancel();
+      selecting[b.id] = false;
+    }
+
+    return 0;
+  }
+
+  boolean onGround(int id){
+    NormalBlock b = blocks[id];
+    if(! b.onField()) return false;
+
+    if(b.posQ + b.sizeQ == rangeQ - baseQ) return true;
+    else return false;
+  }
+
+  boolean onGround(){
+    for(NormalBlock b: blocks){
+      if(selecting[b.id] && onGround(b.id)){
+        return true;
+      }
+    }
+    return false;
+  }
+
+  void drop(){
+    if(onGround()) return;
+
+    for(int i=0; i<rangeP; i++){
+      for(int j=0; j<rangeQ; j++){
+        if(0 <= field[i][j] && field[i][j] < blocks.length &&
+           selecting[field[i][j]]){
+          field[i][j] = -1;
+        }
+      }
+    }
+
+    for(NormalBlock b: blocks){
+      if(selecting[b.id]){
+
+        b.move(b.posP, b.posQ+1);
+
+        for(int s=0; s<b.sizeP; s++){
+          for(int t=0; t<b.sizeQ; t++){
+            field[b.posP+s][b.posQ+t] = b.id;
+          }
+        }
+      }
+    }
+  }
+
+
+  void dropAll(){
+
+    boolean[] dropped = new boolean[blocks.length];
+
+    for(NormalBlock b: blocks){
+      if(! b.onField()){
+        dropped[b.id] = true;
+      }
+      else if(onGround(b.id)){
+        dropped[b.id] = true;
+      }
+      else{
+        dropped[b.id] = false;
+      }
+    }
+
+    while(true){
+      boolean finished = true;
+      for(int i=0; i<blocks.length; i++){
+        selecting[i] = false;
+      }
+      for(int i=0; i<blocks.length; i++){
+        if(! dropped[i]){
+          selecting[i] = true;
+          finished = false;
+          break;
+        }
+      }
+      if(finished) break;
+
+      expand();
+
+      if(onGround()){
+        for(int i=0; i<blocks.length; i++){
+          dropped[i] = dropped[i] || selecting[i];
+        }
+      }
+      else{
+        drop();
+      }
+
+    }
+
+    for(NormalBlock b: blocks){
+      b.cancel();
+    }
+
   }
 
 }
@@ -276,24 +575,15 @@ int scaleY;
 int rangeP;
 int rangeQ;
 
-int nBlock;
-NormalBlock[] blocks;
+NormalBlocks blocks;
 FloorBlock floorBlock;
-MovingBlock movingBlock;
 int[][] field;
 
 int baseQ;
-int selecting;
 Button reset;
 Button drop;
 
-int initBlockOffsetX;
-int initBlockOffsetY;
-int initBlockScaleY;
-
-int blockCounterOffsetX;
-
-int [] mergeMap;
+int lastClick;
 
 void setup(){
   rangeP = 30;
@@ -306,38 +596,19 @@ void setup(){
   menuHeight = fieldHeight;
   size(fieldWidth+menuWidth,fieldHeight);
   baseQ = 3;
-  nBlock = 20;
-  blocks= new NormalBlock[nBlock];
+
+  int[] widths  = {2,2,2,2,2,2,3,3,3,3,3,3,4,4,4,4,6,6,6,6};
+  int[] heights = {1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1};
+
+  blocks= new NormalBlocks(widths,heights);
   floorBlock = new FloorBlock();
 
-  movingBlock = new MovingBlock();
-  selecting = -1;
-
-  initBlockOffsetX = 20;
-  initBlockOffsetY = 30;
-  initBlockScaleY = 50;
-  blockCounterOffsetX = 170;
-
-  // 2 x 1
-  for(int i=0; i<6; i++){
-    blocks[i] = new NormalBlock(fieldWidth+initBlockOffsetX,
-                                initBlockOffsetY, 2, 1, i);
-  }
-  // 3 x 1
-  for(int i=6; i<12; i++){
-    blocks[i] = new NormalBlock(fieldWidth+initBlockOffsetX,
-                                initBlockOffsetY+initBlockScaleY, 3,1, i);
-  }
-  // 4 x 1
-  for(int i=12; i<16; i++){
-    blocks[i] = new NormalBlock(fieldWidth+initBlockOffsetX,
-                                initBlockOffsetY+2*initBlockScaleY, 4,1,i);
-  }
-  // 6 x 1
-  for(int i=16; i<20; i++){
-    blocks[i] = new NormalBlock(fieldWidth+initBlockOffsetX,
-                                initBlockOffsetY+3*initBlockScaleY,6,1,i);
-  }
+  int buttonWidth = 130;
+  int buttonHeight = 30;
+  reset = new Button(fieldWidth + (menuWidth-buttonWidth)/2, 500,
+                     buttonWidth, buttonHeight, "Reset");
+  drop = new Button(fieldWidth + (menuWidth-buttonWidth)/2, 550,
+                    buttonWidth, buttonHeight, "Drop");
 
   field = new int[rangeP][rangeQ];
   for(int x=0; x<rangeP; x++){
@@ -350,16 +621,6 @@ void setup(){
       }
     }
   }
-
-  int buttonWidth = 130;
-  int buttonHeight = 30;
-  reset = new Button(fieldWidth + (menuWidth-buttonWidth)/2, 500,
-                     buttonWidth, buttonHeight, "Reset");
-  drop = new Button(fieldWidth + (menuWidth-buttonWidth)/2, 550,
-                    buttonWidth, buttonHeight, "Drop");
-
-  mergeMap = new int[nBlock];
-
 }
 
 void draw(){
@@ -375,24 +636,10 @@ void draw(){
   reset.draw();
   drop.draw();
 
-  textSize(18);
-  fill(255);
-  text("x "+ countUnusedBlocksSizeOf(2,1),
-       fieldWidth + blockCounterOffsetX, initBlockOffsetY);
-  text("x "+ countUnusedBlocksSizeOf(3,1),
-       fieldWidth + blockCounterOffsetX, initBlockOffsetY+initBlockScaleY);
-  text("x "+ countUnusedBlocksSizeOf(4,1),
-       fieldWidth + blockCounterOffsetX, initBlockOffsetY+2*initBlockScaleY);
-  text("x "+ countUnusedBlocksSizeOf(6,1),
-       fieldWidth + blockCounterOffsetX, initBlockOffsetY+3*initBlockScaleY);
+  blocks.draw();
+  blocks.drawCount();
 
-  for(NormalBlock b : blocks){
-    b.draw();
-  }
-
-  if(selecting >= 0){
-    movingBlock.draw(blocks[selecting]);
-  }
+  blocks.drawSelecting();
 
 }
 
@@ -407,140 +654,34 @@ void grid(){
 }
 
 void mousePressed(){
-  if(selecting < 0){
-
-    if(reset.clicked()){
-      for(NormalBlock b : blocks){
-        b.init();
-      }
-      return;
+  if(blocks.isSelecting()){
+    if(millis() - lastClick < 200){
+      blocks.expand();
     }
 
-    if(drop.clicked()){
-      dropBlocks();
-      return;
-    }
-
-    int nearest = nearestBlockIndex();
-    if(nearest < 0) return;
-    selecting = nearest;
-    blocks[nearest].select();
-  }
-  else{
-    if(mouseX > fieldWidth){
-      blocks[selecting].init();
-      blocks[selecting].cancel();
-      selecting = -1;
+    // dispose
+    else if(mouseX > fieldWidth){
+      blocks.init();
+      blocks.cancel();
     }
     else{
-      if(blocks[selecting].put() >= 0){
-        blocks[selecting].cancel();
-        selecting = -1;
-      }
+      blocks.put();
     }
-  }
-}
 
-int nearestBlockIndex(){
-  float minDist = dist(blocks[0].xCenter(), blocks[0].yCenter(), mouseX, mouseY);
-  int minInd = 0;
-  int threshold = scaleY * 3;
-  for(int i=1; i<nBlock; i++){
-    float d = dist(blocks[i].xCenter(), blocks[i].yCenter(),mouseX, mouseY);
-    if(d <= minDist){
-      minDist = d;
-      minInd = i;
-    }
-  }
-  if(minDist < threshold){
-    return minInd;
   }
   else{
-    return -1;
-  }
-}
 
-int countUnusedBlocksSizeOf(int p, int q){
-  int c=0;
-  for(NormalBlock b: blocks){
-    if(b.sizeP == p && b.sizeQ == q &&
-       b.posP < 0 && b.posQ < 0){
-      c++;
+    if(reset.clicked()){
+      blocks.reset();
+      return;
+    }
+    else if(drop.clicked()){
+      blocks.dropAll();
+      return;
+    }
+    else{
+      blocks.selectNearest();
     }
   }
-  return c;
-}
-
-void dropBlocks(){
-
-  int droppingId;
-
-  for(int i=0; i<nBlock; i++){
-    mergeMap[i] = i;
-  }
-
-  while(true){
-    droppingId = -1;
-    mergeBlocks();
-
-    /*
-    for(int i=0; i<nBlock; i++){
-      println(i + " " + mergeMap[i]);
-    }
-    */
-
-    // find dropable blocks
-    for(NormalBlock b: blocks){
-      if(b.onField() && mergeMap[b.id] < floorBlock.id){
-        droppingId = mergeMap[b.id];
-        break;
-      }
-    }
-
-    if(droppingId < 0){
-      break;
-    }
-
-    // drop
-    for(int j=rangeQ-baseQ-1; j>=0; j--){
-      for(int i=0; i<rangeP; i++){
-        if(field[i][j] >= 0 && mergeMap[field[i][j]] == droppingId){
-          blocks[field[i][j]].drop();
-        }
-      }
-    }
-
-  }
-
-}
-
-void mergeBlocks(){
-  boolean changed = true;
-
-  for(NormalBlock b: blocks){
-    if(b.onField() && b.connected(floorBlock)){
-      mergeMap[b.id] = floorBlock.id;
-    }
-  }
-
-  while(changed){
-    changed = false;
-
-    for(NormalBlock b1: blocks){
-      for(NormalBlock b2: blocks){
-        if(b1.onField() && b2.onField() &&
-           b1.id != b2.id && b1.connected(b2)){
-          if(mergeMap[b1.id] > mergeMap[b2.id]){
-            mergeMap[b2.id] = mergeMap[b1.id];
-            changed = true;
-          }
-          else if(mergeMap[b1.id] < mergeMap[b2.id]){
-            mergeMap[b1.id] = mergeMap[b2.id];
-            changed = true;
-          }
-        }
-      }
-    }
-  }
-
+  lastClick = millis();
 }
