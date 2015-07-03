@@ -14,6 +14,14 @@ class Block{
     id = i;
   }
 
+  void draw(){
+    boolean[] stubs = new boolean[sizeP];
+    for(int i=0; i<stubs.length; i++){
+      stubs[i] = true;
+    }
+    draw(stubs);
+  }
+
   void draw(boolean[] stubs){
     fill(fill_color);
     stroke(str_color);
@@ -88,8 +96,8 @@ class NormalBlock extends Block{
 
 class FloorBlock extends Block{
 
-  FloorBlock(){
-    super(0, (rangeQ-baseQ)*scaleX, rangeP, baseQ, #228b22, color(127),100);
+  FloorBlock(int floorQ){
+    super(0, rangeQ*scaleX, rangeP, floorQ, #228b22, color(127),100);
   }
 
   void draw(){
@@ -106,6 +114,8 @@ class NormalBlocks{
   NormalBlock[] blocks;
   IntDict sizeIndeces;
   boolean[] selecting;
+  int[][] field;
+  Block[] skelton = {};
 
   int initBlockOffsetX = 20;
   int initBlockOffsetY = 30;
@@ -122,6 +132,11 @@ class NormalBlocks{
     for(int i=0; i<len; i++){
       String sizeStr = ws[i]+" "+hs[i];
       if(! sizeIndeces.hasKey(sizeStr)){
+        Block b = new Block(fieldWidth + initBlockOffsetX,
+                            initBlockOffsetY +
+                            sizeIndex*initBlockScaleY,
+                            ws[i],hs[i], color(64), #7f7f7f, sizeIndex);
+        skelton = (Block [])append(skelton, b);
         sizeIndeces.set(sizeStr, sizeIndex++);
       }
       blocks[i] = new NormalBlock(fieldWidth + initBlockOffsetX,
@@ -129,6 +144,13 @@ class NormalBlocks{
                                   sizeIndeces.get(sizeStr)*initBlockScaleY,
                                   ws[i], hs[i], i);
       selecting[i] = false;
+    }
+
+    field = new int[rangeP][rangeQ];
+    for(int x=0; x<rangeP; x++){
+      for(int y=0; y<rangeQ; y++){
+        field[x][y] = -1;
+      }
     }
   }
 
@@ -146,12 +168,13 @@ class NormalBlocks{
       }
     }
 
-    textSize(18);
-    fill(255);
     for(int s=0; s < count.length; s++){
+      textSize(18);
+      fill(255);
       text("x "+ count[s],
            fieldWidth + blockCounterOffsetX,
            initBlockOffsetY + s*initBlockScaleY);
+      skelton[s].draw();
     }
   }
 
@@ -230,7 +253,7 @@ class NormalBlocks{
 
   void reset(){
     for(int i=0; i<rangeP; i++){
-      for(int j=0; j<rangeQ-baseQ; j++){
+      for(int j=0; j<rangeQ; j++){
         field[i][j] = -1;
       }
     }
@@ -291,7 +314,7 @@ class NormalBlocks{
     select(i);
   }
 
-  boolean[] adjust(int id){
+  boolean[] adjacent(int id){
     NormalBlock b = blocks[id];
     boolean[] ad = new boolean[blocks.length];
     for(int i=0; i<blocks.length; i++){
@@ -299,13 +322,17 @@ class NormalBlocks{
     }
 
     for(int s=0; s<b.sizeP; s++){
-      int n = field[b.posP+s][b.posQ-1];
-      if(0 <= n && n < blocks.length){
-        ad[n] = true;
+      if(b.posQ > 0){
+        int n = field[b.posP+s][b.posQ-1];
+        if(0 <= n && n < blocks.length){
+          ad[n] = true;
+        }
       }
-      n = field[b.posP+s][b.posQ+b.sizeQ];
-      if(0 <= n && n < blocks.length){
-        ad[n] = true;
+      if(b.posQ+b.sizeQ < rangeQ){
+        int n = field[b.posP+s][b.posQ+b.sizeQ];
+        if(0 <= n && n < blocks.length){
+          ad[n] = true;
+        }
       }
 
     }
@@ -320,7 +347,7 @@ class NormalBlocks{
 
       for(NormalBlock b: blocks){
         if(selecting[b.id]){
-          boolean[] ad = adjust(b.id);
+          boolean[] ad = adjacent(b.id);
 
           for(int i=0; i<blocks.length;i++){
             if(!selecting[i] && ad[i]){
@@ -383,7 +410,6 @@ class NormalBlocks{
         for(int t=0; t<b.sizeQ; t++){
           if(p+s < 0 || rangeP <= p+s ||
              q+t < 0 || rangeQ <= q+t ||
-             field[p+s][q+t] == floorBlock.id ||
              (field[p+s][q+t] >= 0 && !selecting[field[p+s][q+t]])){
             return false;
           }
@@ -441,7 +467,7 @@ class NormalBlocks{
     NormalBlock b = blocks[id];
     if(! b.onField()) return false;
 
-    if(b.posQ + b.sizeQ == rangeQ - baseQ) return true;
+    if(b.posQ + b.sizeQ == rangeQ) return true;
     else return false;
   }
 
@@ -570,6 +596,8 @@ int fieldWidth;
 int fieldHeight;
 int menuWidth;
 int menuHeight;
+int floorWidth;
+int floorHeight;
 int scaleX;
 int scaleY;
 int rangeP;
@@ -577,50 +605,39 @@ int rangeQ;
 
 NormalBlocks blocks;
 FloorBlock floorBlock;
-int[][] field;
 
-int baseQ;
 Button reset;
 Button drop;
 
 int lastClick;
 
 void setup(){
-  rangeP = 30;
-  rangeQ = 30;
+  int floorQ = 2;
+  rangeP = 25;
+  rangeQ = 25;
   scaleX = 20;
   scaleY = 20;
   fieldWidth = rangeP*scaleX;
   fieldHeight = rangeQ*scaleY;
+  floorWidth = fieldWidth;
+  floorHeight = floorQ * scaleY;
   menuWidth = 200;
-  menuHeight = fieldHeight;
-  size(fieldWidth+menuWidth,fieldHeight);
-  baseQ = 3;
+  menuHeight = fieldHeight + floorHeight;
+  size(fieldWidth+menuWidth,menuHeight);
 
   int[] widths  = {2,2,2,2,2,2,3,3,3,3,3,3,4,4,4,4,6,6,6,6};
   int[] heights = {1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1};
 
   blocks= new NormalBlocks(widths,heights);
-  floorBlock = new FloorBlock();
+  floorBlock = new FloorBlock(floorQ);
 
   int buttonWidth = 130;
   int buttonHeight = 30;
-  reset = new Button(fieldWidth + (menuWidth-buttonWidth)/2, 500,
+  reset = new Button(fieldWidth + (menuWidth-buttonWidth)/2, height - 110,
                      buttonWidth, buttonHeight, "Reset");
-  drop = new Button(fieldWidth + (menuWidth-buttonWidth)/2, 550,
+  drop = new Button(fieldWidth + (menuWidth-buttonWidth)/2, height - 60,
                     buttonWidth, buttonHeight, "Drop");
 
-  field = new int[rangeP][rangeQ];
-  for(int x=0; x<rangeP; x++){
-    for(int y=0; y<rangeQ; y++){
-      if(y < rangeQ-baseQ){
-        field[x][y] = -1;
-      }
-      else{
-        field[x][y] = floorBlock.id;
-      }
-    }
-  }
 }
 
 void draw(){
@@ -636,8 +653,9 @@ void draw(){
   reset.draw();
   drop.draw();
 
-  blocks.draw();
   blocks.drawCount();
+
+  blocks.draw();
 
   blocks.drawSelecting();
 
