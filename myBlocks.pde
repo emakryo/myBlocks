@@ -1,6 +1,6 @@
 class Block{
   int posX, posY;
-  color fill_color, str_color;
+  color fillColor, strColor;
   int sizeP, sizeQ;
   int id;
 
@@ -9,8 +9,8 @@ class Block{
     posY = y;
     sizeP = w;
     sizeQ = h;
-    fill_color = f;
-    str_color = s;
+    fillColor = f;
+    strColor = s;
     id = i;
   }
 
@@ -23,8 +23,8 @@ class Block{
   }
 
   void draw(boolean[] stubs){
-    fill(fill_color);
-    stroke(str_color);
+    fill(fillColor);
+    stroke(strColor);
     rect(posX, posY, sizeP*scaleX, sizeQ*scaleY);
 
     for(int s=0; s<sizeP;s++){
@@ -48,11 +48,18 @@ class Block{
     return posY+(sizeQ*scaleY)/2;
   }
 
+  boolean pointing(){
+    return posX <= mouseX && mouseX < posX+sizeP*scaleX &&
+           posY <= mouseY && mouseY < posY+sizeQ*scaleY;
+  }
+
 }
 
 class NormalBlock extends Block{
   int posP = -1, posQ = -1;
   int initX, initY;
+  boolean selecting = false;
+  boolean floating = false;
 
   NormalBlock(int x, int y, int w, int h, int i){
     super(x,y,w,h,#ffffff, #7f7f7f,i);
@@ -60,16 +67,29 @@ class NormalBlock extends Block{
     initY = y;
   }
 
+  void draw(boolean[] stubs, int T){
+    if(selecting){
+      fillColor = #ff0000;
+    }
+    else if(floating){
+      fillColor = color(255,T,T);
+    }
+    else{
+      fillColor = #ffffff;
+    }
+    draw(stubs);
+  }
+
   boolean onField(){
     return posP >= 0;
   }
 
   void select(){
-    fill_color = #ff0000;
+    selecting = true;
   }
 
   void cancel(){
-    fill_color = #ffffff;
+    selecting = false;
   }
 
   void init(){
@@ -83,6 +103,8 @@ class NormalBlock extends Block{
     posP = -1;
     posQ = -1;
 
+    floating = false;
+    selecting = false;
   }
 
   void move(int p, int q){
@@ -155,8 +177,9 @@ class NormalBlocks{
   }
 
   void draw(){
+    int T = int((sin(millis()*PI/2000)+1.0)*64+127);
     for(NormalBlock b: blocks){
-      b.draw(stubs(b.id));
+      b.draw(stubs(b.id), T);
     }
   }
 
@@ -182,6 +205,7 @@ class NormalBlocks{
     int centerX = centerX();
     int centerY = centerY();
     color strColor = #7f7f7f;
+    color fillColor = color(#ffffff,127);
 
     if(centerX < 0 || centerY < 0) return;
 
@@ -189,11 +213,15 @@ class NormalBlocks{
       strColor = #ff0000;
     }
 
+    if(mouseX > fieldWidth){
+      fillColor = color(#2f4f4f, 127);
+    }
+
     for(NormalBlock b: blocks){
       if(selecting[b.id]){
         b.draw(stubsSelecting(b.id),
                mouseX-centerX,mouseY-centerY,
-               color(#ffffff,127),strColor);
+               fillColor, strColor);
       }
     }
   }
@@ -223,53 +251,31 @@ class NormalBlocks{
     return st;
   }
 
-  void init(){
-    for(int i=0; i<rangeP; i++){
-      for(int j=0; j<rangeQ; j++){
-        if(0 <= field[i][j] && field[i][j] < blocks.length &&
-           selecting[field[i][j]]){
-          field[i][j] = -1;
-        }
+  void init(int id){
+    NormalBlock b = blocks[id];
+    if(! b.onField()) return;
+    for(int s=0; s<b.sizeP; s++){
+      for(int t=0; t<b.sizeQ; t++){
+        field[b.posP+s][b.posQ+t] = -1;
       }
     }
+    b.init();
+  }
+
+  void initSelecting(){
     for(NormalBlock b: blocks){
       if(selecting[b.id]){
-        b.init();
+        init(b.id);
         selecting[b.id] = false;
       }
     }
   }
 
-  void init(int id){
-    blocks[id].init();
-    for(int i=0; i<rangeP; i++){
-      for(int j=0; j<rangeQ; j++){
-        if(field[i][j] == id){
-          field[i][j] = -1;
-        }
-      }
-    }
-  }
-
-  void reset(){
-    for(int i=0; i<rangeP; i++){
-      for(int j=0; j<rangeQ; j++){
-        field[i][j] = -1;
-      }
-    }
-
+  void resetAll(){
     for(NormalBlock b: blocks){
       b.cancel();
-      b.init();
+      init(b.id);
     }
-  }
-
-  NormalBlock at(int id){
-    return blocks[id];
-  }
-
-  int count(){
-    return blocks.length;
   }
 
   int nearestIndex(int x, int y){
@@ -292,25 +298,28 @@ class NormalBlocks{
     }
   }
 
-  void select(boolean[] mask){
-    for(int i=0; i<blocks.length; i++){
-      if(mask[i]){
-        blocks[i].select();
-        selecting[i] = true;
-      }
-    }
-  }
-
   void select(int id){
     blocks[id].select();
     selecting[id] = true;
   }
 
+  void select(boolean[] mask){
+    for(NormalBlock b: blocks){
+      if(mask[b.id]){
+        select(b.id);
+      }
+    }
+  }
+
   void selectNearest(){
+    for(NormalBlock b: blocks){
+      if(b.pointing()){
+        select(b.id);
+        return;
+      }
+    }
     int i = nearestIndex(mouseX, mouseY);
-
     if(i < 0) return;
-
     select(i);
   }
 
@@ -351,17 +360,11 @@ class NormalBlocks{
 
           for(int i=0; i<blocks.length;i++){
             if(!selecting[i] && ad[i]){
-              selecting[i] = true;
+              select(i);
               changed = true;
             }
           }
         }
-      }
-    }
-
-    for(NormalBlock b: blocks){
-      if(selecting[b.id]){
-        b.select();
       }
     }
 
@@ -455,12 +458,46 @@ class NormalBlocks{
           field[b.posP+s][b.posQ+t] = b.id;
         }
       }
-
-      b.cancel();
-      selecting[b.id] = false;
     }
 
+    cancel();
+
+    checkFloating();
+
     return 0;
+  }
+
+  void checkFloating(){
+    boolean changed = true;
+    boolean[] floating = new boolean[blocks.length];
+
+    for(NormalBlock b: blocks){
+      if(! b.onField() || onGround(b.id)){
+        floating[b.id] = false;
+      }
+      else{
+        floating[b.id] = true;
+      }
+    }
+
+    while(changed){
+      changed = false;
+      for(NormalBlock b: blocks){
+        if(! floating[b.id]) continue;
+        boolean[] ad = adjacent(b.id);
+        for(NormalBlock ab: blocks){
+          if(ad[ab.id] && ! floating[ab.id]){
+            floating[b.id] = false;
+            changed = true;
+          }
+        }
+      }
+    }
+
+    for(NormalBlock b: blocks){
+      b.floating = floating[b.id];
+    }
+
   }
 
   boolean onGround(int id){
@@ -554,6 +591,8 @@ class NormalBlocks{
       b.cancel();
     }
 
+    checkFloating();
+
   }
 
 }
@@ -608,6 +647,7 @@ FloorBlock floorBlock;
 
 Button reset;
 Button drop;
+Button done;
 
 int lastClick;
 
@@ -637,7 +677,6 @@ void setup(){
                      buttonWidth, buttonHeight, "Reset");
   drop = new Button(fieldWidth + (menuWidth-buttonWidth)/2, height - 60,
                     buttonWidth, buttonHeight, "Drop");
-
 }
 
 void draw(){
@@ -679,7 +718,7 @@ void mousePressed(){
 
     // dispose
     else if(mouseX > fieldWidth){
-      blocks.init();
+      blocks.initSelecting();
       blocks.cancel();
     }
     else{
@@ -690,7 +729,7 @@ void mousePressed(){
   else{
 
     if(reset.clicked()){
-      blocks.reset();
+      blocks.resetAll();
       return;
     }
     else if(drop.clicked()){
