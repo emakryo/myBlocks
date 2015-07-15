@@ -1,3 +1,5 @@
+import ddf.minim.*;
+
 class Block{
   int posX, posY;
   color fillColor, strColor;
@@ -224,6 +226,9 @@ class NormalBlocks{
                fillColor, strColor);
       }
     }
+  }
+
+  void drawDropped(){
   }
 
   boolean[] stubs(int id){
@@ -517,7 +522,7 @@ class NormalBlocks{
     return false;
   }
 
-  void drop(){
+  void dropSelecting(){
     if(onGround()) return;
 
     for(int i=0; i<rangeP; i++){
@@ -582,7 +587,7 @@ class NormalBlocks{
         }
       }
       else{
-        drop();
+        dropSelecting();
       }
 
     }
@@ -610,7 +615,7 @@ class Button{
     str = s;
   }
 
-  boolean clicked(){
+  boolean pointing(){
     if(posX <= mouseX && mouseX <= posX+sizeX &&
        posY <= mouseY && mouseY <= posY+sizeY){
       return true;
@@ -651,6 +656,9 @@ Button done;
 
 int lastClick;
 
+Minim minim;
+AudioPlayer click, dispose, resetSound;
+
 void setup(){
   int floorQ = 2;
   rangeP = 25;
@@ -677,6 +685,11 @@ void setup(){
                      buttonWidth, buttonHeight, "Reset");
   drop = new Button(fieldWidth + (menuWidth-buttonWidth)/2, height - 60,
                     buttonWidth, buttonHeight, "Drop");
+
+  minim = new Minim(this);
+  click = minim.loadFile("sound/click.mp3");
+  dispose = minim.loadFile("sound/dispose.mp3");
+  resetSound = minim.loadFile("sound/wc.mp3");
 }
 
 void draw(){
@@ -720,24 +733,32 @@ void mousePressed(){
     else if(mouseX > fieldWidth){
       blocks.initSelecting();
       blocks.cancel();
+      dispose.rewind();
+      dispose.play();
     }
     else{
       blocks.put();
+      click.rewind();
+      click.play();
     }
 
   }
   else{
 
-    if(reset.clicked()){
+    if(reset.pointing()){
       blocks.resetAll();
+      resetSound.rewind();
+      resetSound.play();
       return;
     }
-    else if(drop.clicked()){
+    else if(drop.pointing()){
       blocks.dropAll();
       return;
     }
     else{
       blocks.selectNearest();
+      click.rewind();
+      click.play();
     }
   }
   lastClick = millis();
